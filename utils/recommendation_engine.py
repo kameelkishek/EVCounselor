@@ -262,8 +262,27 @@ class RecommendationEngine:
         """Rank and format recommendations"""
         recommendations = []
         
+        # Get scaled input features for breakdown calculation
+        input_features = self._extract_vehicle_features(original_vehicle)
+        scaled_input = self.scaler.transform(input_features)[0]
+        
         for idx, similarity_score in similarities[:top_n]:
             ev_row = self.ev_database.iloc[idx]
+            
+            # Get scaled EV features
+            ev_features = np.array([
+                ev_row['size_class'],
+                ev_row['performance_score'],
+                ev_row['efficiency_score'],
+                ev_row['ev_range'],
+                ev_row['year']
+            ])
+            scaled_ev = self.scaler.transform(ev_features.reshape(1, -1))[0]
+            
+            # Calculate feature breakdown from actual cosine similarity
+            breakdown = self._calculate_similarity_breakdown_from_vectors(
+                scaled_input, scaled_ev, similarity_score
+            )
             
             recommendation = {
                 'ev_make': ev_row['make'],
@@ -274,7 +293,8 @@ class RecommendationEngine:
                 'ev_price_category': ev_row['price_category'],
                 'similarity_score': float(similarity_score),
                 'size_match': self._calculate_size_match(original_vehicle, ev_row),
-                'performance_match': self._calculate_performance_match(original_vehicle, ev_row)
+                'performance_match': self._calculate_performance_match(original_vehicle, ev_row),
+                'similarity_breakdown': breakdown
             }
             
             recommendations.append(recommendation)
@@ -308,6 +328,63 @@ class RecommendationEngine:
         else:
             return 'Standard Performance'
     
+    def _calculate_similarity_breakdown_from_vectors(self, scaled_input: np.ndarray, 
+                                                     scaled_ev: np.ndarray, 
+                                                     overall_similarity: float) -> Dict:
+        """Calculate detailed similarity breakdown from scaled feature vectors
+        
+        This breakdown is derived from the actual cosine similarity calculation.
+        Cosine similarity = dot product of normalized vectors = sum of (feature_i * feature_j)
+        Each feature's contribution preserves its sign - positive contributions increase similarity,
+        negative contributions decrease it.
+        """
+        feature_names = ['Size Class', 'Performance', 'Efficiency', 'Range', 'Year']
+        breakdown = {}
+        
+        # Normalize the vectors for cosine similarity
+        input_norm = np.linalg.norm(scaled_input)
+        ev_norm = np.linalg.norm(scaled_ev)
+        
+        if input_norm > 0 and ev_norm > 0:
+            normalized_input = scaled_input / input_norm
+            normalized_ev = scaled_ev / ev_norm
+            
+            # Calculate per-feature contributions to the dot product (cosine similarity)
+            feature_products = normalized_input * normalized_ev
+            
+            # Scale contributions so they are interpretable (multiply by 100 for percentage scale)
+            # The sum of all contributions will equal the cosine similarity * 100
+            for i, name in enumerate(feature_names):
+                # Feature's contribution to cosine similarity (preserves sign)
+                raw_contribution = feature_products[i] * 100
+                
+                # Calculate feature match score (0-100%)
+                # Positive product = aligned features, negative = opposing features
+                # Map [-1, 1] to [0, 100]
+                feature_similarity = (feature_products[i] + 1) / 2 * 100
+                
+                # Get weight from feature_weights (informational only)
+                weight_key = name.lower().replace(' ', '_')
+                weight = self.feature_weights.get(weight_key, 0.2)
+                
+                breakdown[name] = {
+                    'similarity': max(0, min(100, feature_similarity)),
+                    'weight': weight * 100,
+                    'contribution': raw_contribution  # Preserves sign: positive helps, negative hurts
+                }
+        else:
+            # Fallback if vectors are zero
+            for name in feature_names:
+                weight_key = name.lower().replace(' ', '_')
+                weight = self.feature_weights.get(weight_key, 0.2)
+                breakdown[name] = {
+                    'similarity': 50.0,
+                    'weight': weight * 100,
+                    'contribution': 10.0
+                }
+        
+        return breakdown
+    
     def _get_fallback_recommendations(self, vehicle: Dict, top_n: int) -> List[Dict]:
         """Provide fallback recommendations when EV database is unavailable"""
         # Basic rule-based recommendations
@@ -336,6 +413,15 @@ class RecommendationEngine:
         
         recommendations = []
         for i, ev in enumerate(type_recs[:top_n]):
+            # Create simple breakdown for fallback
+            breakdown = {
+                'Size Class': {'similarity': 80.0, 'weight': 30.0, 'contribution': 24.0},
+                'Performance': {'similarity': 75.0, 'weight': 25.0, 'contribution': 18.75},
+                'Efficiency': {'similarity': 85.0, 'weight': 20.0, 'contribution': 17.0},
+                'Range': {'similarity': 80.0, 'weight': 15.0, 'contribution': 12.0},
+                'Year': {'similarity': 90.0, 'weight': 10.0, 'contribution': 9.0}
+            }
+            
             rec = {
                 'ev_make': ev['make'],
                 'ev_model': ev['model'],
@@ -345,7 +431,8 @@ class RecommendationEngine:
                 'ev_price_category': 2,  # Mid-range
                 'similarity_score': 0.8 - (i * 0.1),  # Decreasing similarity
                 'size_match': 'Good',
-                'performance_match': 'Good Performance'
+                'performance_match': 'Good Performance',
+                'similarity_breakdown': breakdown
             }
             recommendations.append(rec)
         

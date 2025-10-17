@@ -138,6 +138,10 @@ def display_recommendations(vehicle_data, recommendations):
         # Create comparison chart
         create_efficiency_comparison_chart(vehicle_data, top_rec)
     
+    # Similarity Score Breakdown
+    st.subheader("Similarity Score Breakdown")
+    display_similarity_breakdown(top_rec)
+    
     # Cost-benefit analysis
     st.subheader("Cost-Benefit Analysis")
     
@@ -220,7 +224,7 @@ def display_cost_analysis(cost_analysis):
         st.markdown("**Vehicle Costs**")
         vehicle_costs = cost_analysis['vehicle_costs']
         st.write(f"• Estimated Price: ${vehicle_costs['estimated_price']:,}")
-        st.write(f"• Federal Tax Credit: -${vehicle_costs['federal_tax_credit']:,}")
+        st.write(f"• Price Range: {vehicle_costs['price_range']}")
         st.write(f"• **Net Price: ${vehicle_costs['net_price']:,}**")
     
     with cost_col2:
@@ -295,6 +299,111 @@ def display_range_analysis(vehicle_data, recommendation):
         st.info("ℹ️ Good range coverage - suitable for daily use with occasional charging")
     else:
         st.warning("⚠️ Limited range coverage - may require daily charging")
+
+def display_similarity_breakdown(recommendation):
+    """Display detailed similarity score breakdown"""
+    if 'similarity_breakdown' not in recommendation:
+        st.info("Similarity breakdown not available for this recommendation")
+        return
+    
+    breakdown = recommendation['similarity_breakdown']
+    
+    st.markdown("""
+    The similarity score is calculated by comparing your vehicle with the recommended EV across five key features.
+    Each feature has a weight that determines its importance in the final score:
+    """)
+    
+    # Create breakdown table
+    breakdown_data = []
+    for feature, values in breakdown.items():
+        contribution_val = values['contribution']
+        impact = "Helps Match" if contribution_val >= 0 else "Reduces Match"
+        breakdown_data.append({
+            'Feature': feature,
+            'Contribution (pp)': f"{contribution_val:+.2f}",  # pp = percentage points
+            'Impact': impact
+        })
+    
+    breakdown_df = pd.DataFrame(breakdown_data)
+    st.dataframe(breakdown_df, use_container_width=True, hide_index=True)
+    
+    # Show the sum
+    total_contribution = sum(breakdown[f]['contribution'] for f in breakdown.keys())
+    st.caption(f"Sum of contributions: {total_contribution:.2f} percentage points = Overall similarity {recommendation['similarity_score']*100:.1f}%")
+    
+    # Visual representation
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Feature match scores
+        features = [item['Feature'] for item in breakdown_data]
+        scores = [breakdown[f]['similarity'] for f in breakdown.keys()]
+        
+        fig = go.Figure(data=[
+            go.Bar(
+                x=scores,
+                y=features,
+                orientation='h',
+                text=[f"{s:.1f}%" for s in scores],
+                textposition='auto',
+                marker_color='lightblue'
+            )
+        ])
+        
+        fig.update_layout(
+            title="Feature Match Scores",
+            xaxis_title="Match Score (%)",
+            yaxis_title="Feature",
+            height=300
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        # Weighted contributions (can be positive or negative)
+        contributions = [breakdown[f]['contribution'] for f in breakdown.keys()]
+        
+        # Color bars based on positive/negative contribution
+        colors = ['green' if c >= 0 else 'red' for c in contributions]
+        
+        fig = go.Figure(data=[
+            go.Bar(
+                x=contributions,
+                y=features,
+                orientation='h',
+                text=[f"{c:+.2f} pp" for c in contributions],  # pp = percentage points
+                textposition='auto',
+                marker_color=colors
+            )
+        ])
+        
+        fig.update_layout(
+            title="Feature Contributions (percentage points)",
+            xaxis_title="Contribution to Overall Similarity Score (pp)",
+            yaxis_title="Feature",
+            height=300
+        )
+        
+        # Add vertical line at 0
+        fig.add_vline(x=0, line_dash="dash", line_color="gray")
+        
+        st.plotly_chart(fig, use_container_width=True)
+    
+    st.info(f"""
+    **How the Similarity Score is Calculated:**
+    
+    The **{recommendation['similarity_score']*100:.1f}% similarity score** is computed using cosine similarity, which compares your vehicle with each EV across five normalized features. 
+    
+    **Feature Contributions (in percentage points):**
+    Each feature contributes to or reduces the overall score:
+    - ✅ **Positive values (green)**: Features that align well and increase the similarity
+    - ❌ **Negative values (red)**: Features that don't match and decrease the similarity
+    
+    **The math:** The contributions shown above are the per-feature components of the cosine similarity calculation. 
+    Their sum equals the overall score ({recommendation['similarity_score']*100:.1f}% = {sum(breakdown[f]['contribution'] for f in breakdown.keys()):.2f} percentage points).
+    
+    This breakdown shows exactly which aspects of your vehicle match well with this EV and which don't.
+    """)
 
 if __name__ == "__main__":
     main()

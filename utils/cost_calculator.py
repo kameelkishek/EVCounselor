@@ -12,7 +12,6 @@ class CostCalculator:
         self.default_electricity_cost = 0.13  # per kWh
         self.ev_efficiency_kwh_per_mile = 0.3  # average kWh per mile for EVs
         self.maintenance_savings_per_mile = 0.05  # EV maintenance savings
-        self.federal_tax_credit = 7500  # Federal EV tax credit
         
         # Price estimates for EV categories
         self.ev_price_estimates = {
@@ -126,12 +125,10 @@ class CostCalculator:
         price_info = self.ev_price_estimates.get(price_category, self.ev_price_estimates[2])
         
         estimated_price = price_info['avg']
-        net_price = max(0, estimated_price - self.federal_tax_credit)
         
         return {
             'estimated_price': estimated_price,
-            'federal_tax_credit': self.federal_tax_credit,
-            'net_price': net_price,
+            'net_price': estimated_price,
             'price_range': f"${price_info['min']:,} - ${price_info['max']:,}"
         }
     
