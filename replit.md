@@ -10,6 +10,29 @@ The application integrates with the EPA Fuel Economy API to access real-time veh
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes (October 2025)
+
+### Similarity Score Breakdown Feature
+- **Added**: Detailed breakdown of similarity score showing per-feature contributions
+- **Display**: Shows each feature's contribution in percentage points (pp) with sign preservation
+- **Features Analyzed**: Size Class, Performance, Efficiency, Range, Year
+- **Visualization**: 
+  - Data table with Feature | Contribution (pp) | Impact columns
+  - Horizontal bar chart with color coding (green = positive, red = negative)
+  - Zero reference line for clarity
+  - Sum verification: "Sum of contributions ≈ Overall similarity score"
+- **Calculation Method**: Component-wise products of normalized feature vectors, scaled by 100 to match percentage scale
+- **User Benefit**: Energy consultants can explain to clients exactly why a particular EV was recommended
+
+### Federal Tax Credit Removal
+- **Removed**: All federal tax credit calculations and displays from cost analysis
+- **Rationale**: Tax credits vary by eligibility, vehicle, and time period; removed to avoid misleading clients
+- **Changed Elements**:
+  - Cost calculator no longer subtracts tax credits from Net Price
+  - UI no longer shows "Federal Tax Credit" line item
+  - Net Price = Estimated Price (no deduction)
+  - Price Range displayed instead of tax credit information
+
 ## System Architecture
 
 ### Frontend Architecture
