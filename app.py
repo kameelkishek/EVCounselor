@@ -7,7 +7,6 @@ from utils.recommendation_engine import RecommendationEngine
 # Configure page
 st.set_page_config(
     page_title="EV Fleet Recommendation Engine",
-    page_icon="🚗",
     layout="wide",
     initial_sidebar_state="expanded"
 )
